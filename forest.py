@@ -33,59 +33,74 @@ embed_color = 0x339966
 n_keywords = 10
 n_articles_results = 5
 
+# Task every minutes
 @tasks.loop(seconds=60.0)
-async def cron_event():
+async def cron_event(client):
 
     # for each newsletter
     newsletters = newsletter_collection.find()
 
+    # keep same date for each newsletter (avoid time issue)
+    current_date = datetime.datetime.now()
+
     for channel_newsletter in newsletters:
+        
+        channel = client.get_channel(channel_newsletter['channel_id'])
 
-        # get current keywords from channel
-        current_keywords = channel_newsletter['keywords']
-        query = '+'.join(current_keywords).replace(' ', '+')
+        config_time = datetime.datetime.strptime(channel_newsletter['time'], "%H:%M")
 
-        articles_list = get_gscholar_results(query)
+        if current_date.hour == config_time.hour and current_date.minute == config_time.minute:
+        
+            # get current keywords from channel
+            current_keywords = channel_newsletter['keywords']
+            query = '+'.join(current_keywords).replace(' ', '+')
 
-        # check if article is already present in collections or not
-        reduced_articles = []
-        for article in articles_list:
+            articles_list = get_gscholar_results(query)
 
-            machting_article = list(filter(lambda a: a['id'] == article['id'], channel_newsletter['articles']))
+            # check if article is already present in collections or not
+            reduced_articles = []
+            for article in articles_list:
 
-            if len(machting_article) == 0:
-                reduced_articles.append(article)
+                machting_article = list(filter(lambda a: a['id'] == article['id'], channel_newsletter['articles']))
 
-        # add unknown articles into collection
-        all_articles = list(channel_newsletter['articles'] + reduced_articles)
+                if len(machting_article) == 0:
+                    reduced_articles.append(article)
 
-        newsletter_collection.update_one(
-            { '_id': channel_newsletter['_id'] }, 
-            { 
-                '$set': { 'articles': all_articles } 
-            },
-            upsert=False
-        )
+            # add unknown articles into collection
+            all_articles = list(channel_newsletter['articles'] + reduced_articles)
 
-        message_data = ':evergreen_tree: Quick search results :evergreen_tree:\n\n'
-        # display into message only new articles found
-        for article in articles_list[:n_articles_results]:
-            message_data += f':newspaper: {article["title"]}\n'
-            message_data += f':link: <{article["href"]}>\n'
-            message_data += f':busts_in_silhouette: *{article["authors"]}*\n'
+            newsletter_collection.update_one(
+                { '_id': channel_newsletter['_id'] }, 
+                { 
+                    '$set': { 'articles': all_articles } 
+                },
+                upsert=False
+            )
 
-            if article["date"] is not None:
-                message_data += f':calendar_spiral: {article["date"]}\n\n'
+            message_data = ':evergreen_tree: :mailbox_with_mail: Newsletter search results :mailbox_with_mail: :evergreen_tree:\n\n'
+            # display into message only new articles found
+            for article in reduced_articles[:n_articles_results]:
+                message_data += f':newspaper: {article["title"]}\n'
+                message_data += f':link: <{article["href"]}>\n'
+                message_data += f':busts_in_silhouette: *{article["authors"]}*\n'
 
-        await message.channel.send(message_data)
+                if article["date"] is not None:
+                    message_data += f':calendar_spiral: {article["date"]}\n\n'
+
+            if len(articles_list) == 0:
+                message_data += ':man_shrugging: There is no new articles, it seems your up to date! :man_shrugging:'
+
+            print(f'{current_date} -- Forest send message to {channel.id}')
+            await channel.send(message_data)
+        
+        else:
+            print(f'{current_date} -- No message sent from Forest to {channel.id}')
 
 def get_gscholar_results(query):
 
     headers = {"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36", 'referer':'https://www.google.com/'}
     req = urllib.request.Request(url=google_scholar_url + query, headers=headers)
     read_content = urllib.request.urlopen(req).read()
-
-    print(google_scholar_url + query)
 
     soup = BeautifulSoup(read_content,'html.parser')
 
@@ -129,6 +144,60 @@ async def on_message(message):
     if message.author == client.user:
         return
 
+    if message.content.startswith('--forest-config'):
+
+        channel_newsletter = newsletter_collection.find_one(
+            {'channel_id': message.channel.id},
+            sort=[( '_id', pymongo.DESCENDING )]
+        )
+
+        if channel_newsletter is None:
+
+            embed = discord.Embed(
+                title=':no_entry: There is no newsletter for this channel :no_entry:', 
+                description='You can add newsletter whenever you want using `--forest-enable`', 
+                color=embed_color)
+            
+        else:
+            try:
+
+                if len(message.content.split(' ')) <= 1:
+
+                    embed = discord.Embed(
+                    title=':interrobang: Configuration error :interrobang:', 
+                    description=f'Please refer to this example: `--forest-config 10:30`\n:clock2: Current configuration is set to `{channel_newsletter["time"]}` :clock2:', 
+                    color=embed_color)
+
+                else:
+                    time_set = message.content.split(' ')[1].strip()
+
+                    # check format 
+                    bool(datetime.datetime.strptime(time_set, "%H:%M"))
+
+                    newsletter_collection.update_one(
+                        { '_id': channel_newsletter['_id'] }, 
+                        { 
+                            '$set': { 'time': time_set } 
+                        },
+                        upsert=False
+                    )
+
+                    print('Configuration updated...')
+
+                    embed = discord.Embed(
+                        title=':clock1: Newsletter configuration updated :clock1: ', 
+                        description=f'New configuration is set to `{time_set}`', 
+                        color=embed_color)
+
+            except ValueError:
+                
+                embed = discord.Embed(
+                    title=':interrobang: Configuration error :interrobang:', 
+                    description=f'Please refer to this example: `--forest-config 10:30`\n:clock2: Current configuration is set to `{channel_newsletter["time"]}`:clock2:', 
+                    color=embed_color)
+
+        await message.channel.send(embed=embed)
+
     if message.content == '--forest-search':
         
         channel_newsletter = newsletter_collection.find_one(
@@ -151,7 +220,7 @@ async def on_message(message):
 
             articles_list = get_gscholar_results(query)
 
-            message_data = ':evergreen_tree: Quick search results :evergreen_tree:\n\n'
+            message_data = ':evergreen_tree: :evergreen_tree: Quick search results :evergreen_tree: :evergreen_tree:\n\n'
             # display into message only new articles found
             for article in articles_list[:n_articles_results]:
                 message_data += f':newspaper: {article["title"]}\n'
@@ -336,7 +405,8 @@ async def on_message(message):
                     'channel_id': message.channel.id,
                     'keywords': [],
                     'articles': [],
-                    'activated': True
+                    'activated': True,
+                    'time': '10:30'
                 })
 
             embed = discord.Embed(
@@ -410,6 +480,16 @@ async def on_message(message):
             inline=False)
 
         embed.add_field(
+            name="`--forest-config`",
+            value=":white_small_square: Specific newsletter hour and minutes configuration",
+            inline=False)
+
+        embed.add_field(
+            name="\t__Example:__", 
+            value="\t`--forest-config 10:30`",
+            inline=False)
+
+        embed.add_field(
             name="`--forest-help`",
             value=":white_small_square: Gives information about all commands", 
             inline=False)
@@ -426,5 +506,7 @@ async def on_ready():
         f'{client.user} is connected\n'
     )
 
+    cron_event.start(client)
+    print(f'Cron task launched...')
+
 client.run(TOKEN)
-cron_event.start()
