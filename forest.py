@@ -9,7 +9,8 @@ import discord
 import asyncio
 import time
 from dotenv import load_dotenv
-
+from bs4 import BeautifulSoup
+import urllib.request
 
 # db connection
 from pymongo import MongoClient
@@ -23,7 +24,8 @@ client = discord.Client()
 connection = MongoClient()
 db = connection['forest-db']
 
-google_scholar_url = "https://scholar.google.fr/scholar?hl=fr&as_sdt=0,5&scisbd=1&q=perception+in+computer+graphics"
+google_scholar_url = "https://scholar.google.fr/scholar?hl=fr&as_sdt=0,5&scisbd=2&q="
+
 newsletter_collection = db['forest-newsletter']
 articles_collection = db['forest-articles']
 
@@ -38,184 +40,169 @@ async def on_message(message):
     if message.author == client.user:
         return
 
-#     sentences_list = newsletter_collection.find()
-#     n_sentences = sentences_list.count()
-
-#     user_creator = discord.utils.find(lambda m: m.id == int(CREATOR_ID), client.users)
-
-#     # send messaged if mentionned or with probability
-#     if discord.utils.find(lambda m: m.id == int(client.user.id), message.mentions) or random.uniform(0, 1) < 0.02:
-
-#         if n_sentences == 0:
-#             embed = discord.Embed(
-#                 title=':warning: No sentences added :warning:', 
-#                 description='It seems I have no knowledge!', 
-#                 color=embed_color)
-#             embed.add_field(
-#                 name=":white_small_square: If you want to add me knowledge (please not stupid thing), please use", 
-#                 value="`--waiter-add {{your-sentence}}`", 
-#                 inline=False)
-#             embed.add_field(
-#                 name="\t__Example:__", 
-#                 value="\t`--waiter-add The sky is blue!`",
-#                 inline=False)
-#             embed.set_footer(text="Do not hesitate to contact {0} for further information".format(str(user_creator))) 
-
-#             await message.channel.send(embed=embed)
-
-#         else:
-#             n_rand = random.randrange(n_sentences)
-
-#             print('Waiter says', sentences_list[n_rand]['sentence'])
-
-#             embed = discord.Embed(
-#                 description="<@{0}>, {1}".format(message.author.id, sentences_list[n_rand]['sentence']), 
-#                 color=embed_color)
-
-#             await message.channel.send(embed=embed)
-
-#     # add new sentence for the bot
-#     if message.content.startswith('--waiter-add'):
-
-#         sentence = message.content.replace('--waiter-add', '').strip()
-
-#         print(sentence)
-
-#         # check if sentence is correct
-#         if len(sentence) > 0:
-            
-#             print('here')
-#             last_sentence = sentences_collection.find_one(
-#                     #{'doc_id': doc_id},
-#                     sort=[( '_id', pymongo.DESCENDING )]
-#                 )
-
-#             if last_sentence:
-#                 new_sentence_id = int(last_sentence['sentence_id']) + 1
-#             else:
-#                 new_sentence_id = 0
-
-#             print(new_sentence_id)
-
-#             sentences_collection.insert_one({
-#                 'sentence_id': new_sentence_id, 
-#                 'sentence': str(sentence), 
-#                 'added_by': message.author.id,
-#                 'added_by_username': str(message.author)})
-
-#             embed = discord.Embed(
-#                 title=':ballot_box_with_check: Sentence has been added :ballot_box_with_check:', 
-#                 description='I now have more knowledge thanks to {0}'.format(str(message.author)), 
-#                 color=embed_color)
-#             embed.add_field(
-#                 name="Sentence added:", 
-#                 value=sentence, 
-#                 inline=False)
-#             embed.set_footer(text="Thanks a lot for your contributions!") 
+    if message.content == '--forest-search':
         
-#         else:
+        channel_newsletter = newsletter_collection.find_one(
+            {'channel_id': message.channel.id},
+            sort=[( '_id', pymongo.DESCENDING )]
+        )
 
-#             embed = discord.Embed(
-#                 title=':warning: Unvalid use of command :warning:', 
-#                 description='It seems your sentence is not valid', 
-#                 color=embed_color)
-#             embed.add_field(
-#                 name=":white_small_square: If you want to add me knowledge (please not stupid thing), please use", 
-#                 value="`--waiter-add {{your-sentence}}`", 
-#                 inline=False)
-#             embed.add_field(
-#                 name="\t__Example:__", 
-#                 value="\t`--waiter-add The sky is blue!`",
-#                 inline=False)
-#             embed.set_footer(text="Do not hesitate to contact {0} for further information".format(str(user_creator))) 
+        if channel_newsletter is None:
+            embed = discord.Embed(
+                title=':no_entry: There is no newsletter for this channel :no_entry:', 
+                description='You can add newsletter whenever you want using `--forest-enable`', 
+                color=embed_color)
 
-#         await message.channel.send(embed=embed)
+        else:
+            # get current keywords from channel
+            current_keywords = channel_newsletter['keywords']
+            query = '+'.join(current_keywords).replace(' ', '+')
+
+            headers = {"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36", 'referer':'https://www.google.com/'}
+            req = urllib.request.Request(url=google_scholar_url + query, headers=headers)
+            read_content = urllib.request.urlopen(req).read()
+
+            soup = BeautifulSoup(read_content,'html.parser')
+
+            gs_results = soup.find_all('div', class_='gs_ri')
+
+            for res in gs_results:
+                link = res.find('h3').find('a')
+                print(link['id'])
+                print(link['href'])
+                print(link.get_text())
 
 
-#     # print all available sentence of the bot
-#     if message.content.startswith('--waiter-list'):
+    if message.content.startswith('--forest-list'):
 
-#         if message.author.id == int(CREATOR_ID):
+        channel_newsletter = newsletter_collection.find_one(
+            {'channel_id': message.channel.id},
+            sort=[( '_id', pymongo.DESCENDING )]
+        )
 
-#             embed = discord.Embed(
-#                 title=':ledger: Waiter-bot dataset :ledger:', 
-#                 description='All available sentence',
-#                 color=embed_color)
+        if channel_newsletter is None:
+            embed = discord.Embed(
+                title=':no_entry: There is no newsletter for this channel :no_entry:', 
+                description='You can add newsletter whenever you want using `--forest-enable`', 
+                color=embed_color)
 
-#             sentences = sentences_list
+        else:
 
-#             if n_sentences > n_display_sentences:
-#                 sentences = sentences.sort('_id', -1).limit(n_display_sentences)
-            
-#             for sentence in sentences:
-#                 embed.add_field(
-#                     name="`{0}`, sentence added by {1}".format(sentence['sentence_id'], sentence['added_by_username']), 
-#                     value="{0}".format(sentence['sentence']),
-#                     inline=False)
+            # get current keywords from channel
+            current_keywords = channel_newsletter['keywords']
 
-#             await message.channel.send(embed=embed)
-    
-#     if message.content.startswith('--forest-show'):
+            message_data = ''
 
-#         response = requests.get(google_scholar_url).json()
+            for k in current_keywords:
+                message_data += f'- {k}\n'
 
-#         embed = discord.Embed(
-#             title='Why Chuck Norris is the best ?', 
-#             description=response['value'], 
-#             color=embed_color)
-#         embed.set_thumbnail(url=response['icon_url'])
+            embed = discord.Embed(
+                title=':scroll: Keywords list :scroll:', 
+                description=message_data, 
+                color=embed_color)
 
-#         await message.channel.send(embed=embed)
-        
-#      # print all available sentence of the bot
-#     if message.content.startswith('--waiter-delete'):
+            embed.set_footer(text=f"Your newsletter is composed of {len(current_keywords)} keywords")
 
-#             sentence_elements = message.content.lower().split(' ')
-
-#             if len(sentence_elements) > 1 and len(sentence_elements) <= 2:
-                
-#                 sentence_id = sentence_elements[1]
-#                 sentence_obj= sentences_collection.find_one({'sentence_id': int(sentence_id)})
-
-#                 # if object exists we can remove it
-#                 if sentence_obj:
-                    
-#                     sentences_collection.delete_one({'sentence_id': int(sentence_id)})
-
-#                     embed = discord.Embed(
-#                         title=':ballot_box_with_check: Sentence has been deleted :ballot_box_with_check:', 
-#                         description='Sentence with :id: {0} removed from my knowledge'.format(str(sentence_id)), 
-#                         color=embed_color)
-
-#                 else:
-#                     embed = discord.Embed(
-#                         title=':warning: Sentence not found :warning:', 
-#                         description='It seems sentence with :id: {0} does not exist'.format(str(sentence_id)), 
-#                         color=embed_color)
-
-#             else:
-
-#                 # sentence id not correct
-#                 embed = discord.Embed(
-#                     title=':warning: Unvalid use of command :warning:', 
-#                     description='It seems your sentence :id: is not valid', 
-#                     color=embed_color)
-#                 embed.add_field(
-#                     name=":white_small_square: If you want to delete a sentence, please use correctly:", 
-#                     value="`--waiter-delete {{sentence-id}}`", 
-#                     inline=False)
-#                 embed.add_field(
-#                     name="\t__Example:__", 
-#                     value="\t`--waiter-delete 42`",
-#                     inline=False)
-
-#             await message.channel.send(embed=embed)
-
-    print(f'{message.content} from {message.author.name}')
+            await message.channel.send(embed=embed)
 
     if message.content.startswith('--forest-add'):
-        pass
+        
+        channel_newsletter = newsletter_collection.find_one(
+            {'channel_id': message.channel.id},
+            sort=[( '_id', pymongo.DESCENDING )]
+        )
 
+        if channel_newsletter is None:
+            embed = discord.Embed(
+                title=':no_entry: There is no newsletter for this channel :no_entry:', 
+                description='You can add newsletter whenever you want using `--forest-enable`', 
+                color=embed_color)
+
+        else:
+
+            # get current keywords from channel
+            current_keywords = channel_newsletter['keywords']
+
+            # get new expected keywords
+            new_keywords = [ k.strip() for k in message.content.replace('--forest-add', '').replace('"', '').split(';') ]
+
+            # merged keywords
+            merged_keywords = list(set(current_keywords + new_keywords))
+            restricted_list = merged_keywords[:10]
+            
+            newsletter_collection.update_one(
+                { '_id': channel_newsletter['_id'] }, 
+                { 
+                    '$set': { 'keywords': restricted_list } 
+                },
+                upsert=False
+            )
+
+            message_data = ''
+
+            for k in restricted_list:
+                message_data += f'- {k}\n'
+
+            if len(merged_keywords) > 10:
+
+                embed = discord.Embed(
+                title=':abacus: Keywords has been added but also truncated :abacus:', 
+                description=f'Number of keywords is limited to 10, some were not taken into consideration:\n{message_data}', 
+                color=embed_color)
+            else:
+                embed = discord.Embed(
+                title=':white_check_mark: Keywords has been added :white_check_mark:', 
+                description=message_data, 
+                color=embed_color)
+
+                embed.set_footer(text=f"Your newsletter is now composed of {len(restricted_list)} keywords")
+
+            await message.channel.send(embed=embed)
+
+    if message.content.startswith('--forest-remove'):
+        
+        channel_newsletter = newsletter_collection.find_one(
+            {'channel_id': message.channel.id},
+            sort=[( '_id', pymongo.DESCENDING )]
+        )
+
+        if channel_newsletter is None:
+            embed = discord.Embed(
+                title=':no_entry: There is no newsletter for this channel :no_entry:', 
+                description='You can add newsletter whenever you want using `--forest-enable`', 
+                color=embed_color)
+
+        else:
+
+            # get current keywords from channel
+            current_keywords = channel_newsletter['keywords']
+
+            # get expected keywords to remove
+            remove_keywords = [ k.strip() for k in message.content.replace('--forest-remove', '').replace('"', '').split(';') ]
+
+            filtered_keywords = list(filter(lambda i: i not in remove_keywords, current_keywords))
+
+            newsletter_collection.update_one(
+                { '_id': channel_newsletter['_id'] }, 
+                { 
+                    '$set': { 'keywords': filtered_keywords } 
+                },
+                upsert=False
+            )
+
+            message_data = ''
+
+            for k in filtered_keywords:
+                message_data += f'- {k}\n'
+
+            embed = discord.Embed(
+                title=':white_check_mark: Keywords has been updated :white_check_mark:', 
+                description=message_data, 
+                color=embed_color)
+
+            embed.set_footer(text=f"Your newsletter is now composed of {len(filtered_keywords)} keywords")
+                
+            await message.channel.send(embed=embed)
 
     if message.content == '--forest-disable':
         
@@ -232,10 +219,12 @@ async def on_message(message):
                 color=embed_color)
 
         else:
-            # Using update_one() method for single 
             newsletter_collection.update_one(
-                { 'channel_id': 'message.channel.id' }, 
-                { "$set": { 'activated': False } }
+                { '_id': channel_newsletter['_id'] }, 
+                { 
+                    '$set': { 'activated': False } 
+                },
+                upsert=False
             )
 
             embed = discord.Embed(
@@ -255,9 +244,9 @@ async def on_message(message):
         if channel_newsletter is None:
             
             newsletter_collection.insert_one({
-                'channel_id': message.channel.id,
-                'keywords': [],
-                'activated': True
+                    'channel_id': message.channel.id,
+                    'keywords': [],
+                    'activated': True
                 })
 
             embed = discord.Embed(
@@ -265,6 +254,15 @@ async def on_message(message):
                 description='You can now add your keywords using `--forest-add`', 
                 color=embed_color)
         else:
+
+            newsletter_collection.update_one(
+                { '_id': channel_newsletter['_id'] }, 
+                { 
+                    '$set': { 'activated': True } 
+                },
+                upsert=False
+            )
+
             embed = discord.Embed(
                 title=':incoming_envelope: Newsletter has been reactivated for this channel :incoming_envelope:', 
                 description='You can now update your keywords using `--forest-add` or `--forest-remove`', 
@@ -273,6 +271,7 @@ async def on_message(message):
         await message.channel.send(embed=embed)
 
      # send all available commands of forest bot
+    
     if message.content == '--forest-help':
 
         embed = discord.Embed(
@@ -290,21 +289,37 @@ async def on_message(message):
             value=":white_small_square: Disables newsletter of the current channel if exists",
             inline=False)
 
-        # embed.add_field(
-        #     name="\t__Example:__", 
-        #     value="\t`--waiter-add Something not stupid please!`",
-        #     inline=False)
-        # embed.add_field(
-        #     value="`--waiter-chuck-fact`",
-        #     name=":white_small_square: True fact of Chuck Norris displayed!",
-        #     inline=False)
+        embed.add_field(
+            name="`--forest-add`",
+            value=":white_small_square: Add if not exists specific keywords for current newsletter",
+            inline=False)
+
+        embed.add_field(
+            name="\t__Example:__", 
+            value="\t`--forest-add \"computer graphics;machine learning;perception\"`",
+            inline=False)
+
+        embed.add_field(
+            name="`--forest-remove`",
+            value=":white_small_square: Removes specific keyword for current newsletter",
+            inline=False)
+
+        embed.add_field(
+            name="\t__Example:__", 
+            value="\t`--forest-remove \"computer graphics;machine learning;perception\"`",
+            inline=False)
+
+        embed.add_field(
+            name="`--forest-list`",
+            value=":white_small_square: Display list of keywords of current newsletter (maximum number of keywords is set to 10)",
+            inline=False)
 
         embed.add_field(
             name="`--forest-help`",
             value=":white_small_square: Gives information about all commands", 
             inline=False)
             
-        embed.set_footer(text="That was a pleasure!") #if you like to
+        embed.set_footer(text="Hope it helped!") #if you like to
 
         await message.channel.send(embed=embed)
 

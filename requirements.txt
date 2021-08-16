@@ -3,3 +3,4 @@ python-dotenv
 pymongo
 bson
 requests
+bs4
