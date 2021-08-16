@@ -27,7 +27,6 @@ db = connection['forest-db']
 google_scholar_url = "https://scholar.google.fr/scholar?hl=fr&as_sdt=0,5&scisbd=2&q="
 
 newsletter_collection = db['forest-newsletter']
-articles_collection = db['forest-articles']
 
 embed_color = 0x339966
 n_keywords = 10
@@ -66,11 +65,23 @@ async def on_message(message):
 
             gs_results = soup.find_all('div', class_='gs_ri')
 
+            # TODO: check if article is present or not and display it consequently
             for res in gs_results:
+                article_data = {}
+
                 link = res.find('h3').find('a')
-                print(link['id'])
-                print(link['href'])
-                print(link.get_text())
+                article_data['id'] = link['id']
+                article_data['href'] = link['href']
+                article_data['title'] = link.get_text()
+
+                article_data['authors'] = res.find('div', class_='gs_a').get_text()
+                ndays_text = res.find('span', class_='gs_age').get_text()
+                ndays = [int(i) for i in ndays_text.split() if i.isdigit() ][0]
+                print(article_data)
+
+                # TODO: compute publication date
+                print(ndays)
+                
 
 
     if message.content.startswith('--forest-list'):
@@ -173,7 +184,6 @@ async def on_message(message):
                 color=embed_color)
 
         else:
-
             # get current keywords from channel
             current_keywords = channel_newsletter['keywords']
 
@@ -246,6 +256,7 @@ async def on_message(message):
             newsletter_collection.insert_one({
                     'channel_id': message.channel.id,
                     'keywords': [],
+                    'articles': [],
                     'activated': True
                 })
 
