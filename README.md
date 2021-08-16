@@ -4,6 +4,8 @@
 
 A discord robot that maintains a targeted scientific bibliography in the format of a newsletter.
 
+![forest](https://github.com/jbuisine/Forest-Bot/blob/master/forest.gif)
+
 ## Requirements
 
 Set your own configutation:
