@@ -11,6 +11,7 @@ import time
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 import urllib.request
+from discord.ext import tasks, commands
 
 # db connection
 from pymongo import MongoClient
@@ -30,7 +31,96 @@ newsletter_collection = db['forest-newsletter']
 
 embed_color = 0x339966
 n_keywords = 10
+n_articles_results = 5
 
+@tasks.loop(seconds=60.0)
+async def cron_event():
+
+    # for each newsletter
+    newsletters = newsletter_collection.find()
+
+    for channel_newsletter in newsletters:
+
+        # get current keywords from channel
+        current_keywords = channel_newsletter['keywords']
+        query = '+'.join(current_keywords).replace(' ', '+')
+
+        articles_list = get_gscholar_results(query)
+
+        # check if article is already present in collections or not
+        reduced_articles = []
+        for article in articles_list:
+
+            machting_article = list(filter(lambda a: a['id'] == article['id'], channel_newsletter['articles']))
+
+            if len(machting_article) == 0:
+                reduced_articles.append(article)
+
+        # add unknown articles into collection
+        all_articles = list(channel_newsletter['articles'] + reduced_articles)
+
+        newsletter_collection.update_one(
+            { '_id': channel_newsletter['_id'] }, 
+            { 
+                '$set': { 'articles': all_articles } 
+            },
+            upsert=False
+        )
+
+        message_data = ':evergreen_tree: Quick search results :evergreen_tree:\n\n'
+        # display into message only new articles found
+        for article in articles_list[:n_articles_results]:
+            message_data += f':newspaper: {article["title"]}\n'
+            message_data += f':link: <{article["href"]}>\n'
+            message_data += f':busts_in_silhouette: *{article["authors"]}*\n'
+
+            if article["date"] is not None:
+                message_data += f':calendar_spiral: {article["date"]}\n\n'
+
+        await message.channel.send(message_data)
+
+def get_gscholar_results(query):
+
+    headers = {"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36", 'referer':'https://www.google.com/'}
+    req = urllib.request.Request(url=google_scholar_url + query, headers=headers)
+    read_content = urllib.request.urlopen(req).read()
+
+    print(google_scholar_url + query)
+
+    soup = BeautifulSoup(read_content,'html.parser')
+
+    gs_results = soup.find_all('div', class_='gs_ri')
+
+    articles_list = []
+
+    for res in gs_results:
+        article_data = {}
+
+        # get basic data
+        link = res.find('h3').find('a')
+        article_data['id'] = link['id']
+        article_data['href'] = link['href']
+        article_data['title'] = link.get_text()
+
+        # get authors and journal data
+        article_data['authors'] = res.find('div', class_='gs_a').get_text()
+
+        ndays_element = res.find('span', class_='gs_age')
+
+        # get publication date if exists
+        if ndays_element:
+            ndays_text = ndays_element.get_text()
+            ndays = [int(i) for i in ndays_text.split() if i.isdigit() ][0]
+
+            today = datetime.date.today()
+            publication_date = today - datetime.timedelta(days = ndays)
+            article_data['date'] = publication_date.strftime("%B %d, %Y")
+        else:
+            article_data['date'] = None
+
+        articles_list.append(article_data)
+    
+    return articles_list
 
 @client.event
 async def on_message(message):
@@ -47,42 +137,31 @@ async def on_message(message):
         )
 
         if channel_newsletter is None:
+
             embed = discord.Embed(
                 title=':no_entry: There is no newsletter for this channel :no_entry:', 
                 description='You can add newsletter whenever you want using `--forest-enable`', 
                 color=embed_color)
-
+            
+            await message.channel.send(embed=embed)
         else:
             # get current keywords from channel
             current_keywords = channel_newsletter['keywords']
             query = '+'.join(current_keywords).replace(' ', '+')
 
-            headers = {"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36", 'referer':'https://www.google.com/'}
-            req = urllib.request.Request(url=google_scholar_url + query, headers=headers)
-            read_content = urllib.request.urlopen(req).read()
+            articles_list = get_gscholar_results(query)
 
-            soup = BeautifulSoup(read_content,'html.parser')
+            message_data = ':evergreen_tree: Quick search results :evergreen_tree:\n\n'
+            # display into message only new articles found
+            for article in articles_list[:n_articles_results]:
+                message_data += f':newspaper: {article["title"]}\n'
+                message_data += f':link: <{article["href"]}>\n'
+                message_data += f':busts_in_silhouette: *{article["authors"]}*\n'
 
-            gs_results = soup.find_all('div', class_='gs_ri')
+                if article["date"] is not None:
+                    message_data += f':calendar_spiral: {article["date"]}\n\n'
 
-            # TODO: check if article is present or not and display it consequently
-            for res in gs_results:
-                article_data = {}
-
-                link = res.find('h3').find('a')
-                article_data['id'] = link['id']
-                article_data['href'] = link['href']
-                article_data['title'] = link.get_text()
-
-                article_data['authors'] = res.find('div', class_='gs_a').get_text()
-                ndays_text = res.find('span', class_='gs_age').get_text()
-                ndays = [int(i) for i in ndays_text.split() if i.isdigit() ][0]
-                print(article_data)
-
-                # TODO: compute publication date
-                print(ndays)
-                
-
+            await message.channel.send(message_data)
 
     if message.content.startswith('--forest-list'):
 
@@ -114,7 +193,7 @@ async def on_message(message):
 
             embed.set_footer(text=f"Your newsletter is composed of {len(current_keywords)} keywords")
 
-            await message.channel.send(embed=embed)
+        await message.channel.send(embed=embed)
 
     if message.content.startswith('--forest-add'):
         
@@ -139,7 +218,7 @@ async def on_message(message):
 
             # merged keywords
             merged_keywords = list(set(current_keywords + new_keywords))
-            restricted_list = merged_keywords[:10]
+            restricted_list = merged_keywords[:n_keywords]
             
             newsletter_collection.update_one(
                 { '_id': channel_newsletter['_id'] }, 
@@ -154,11 +233,11 @@ async def on_message(message):
             for k in restricted_list:
                 message_data += f'- {k}\n'
 
-            if len(merged_keywords) > 10:
+            if len(merged_keywords) > n_keywords:
 
                 embed = discord.Embed(
                 title=':abacus: Keywords has been added but also truncated :abacus:', 
-                description=f'Number of keywords is limited to 10, some were not taken into consideration:\n{message_data}', 
+                description=f'Number of keywords is limited to {n_keywords}, some were not taken into consideration:\n{message_data}', 
                 color=embed_color)
             else:
                 embed = discord.Embed(
@@ -168,7 +247,7 @@ async def on_message(message):
 
                 embed.set_footer(text=f"Your newsletter is now composed of {len(restricted_list)} keywords")
 
-            await message.channel.send(embed=embed)
+        await message.channel.send(embed=embed)
 
     if message.content.startswith('--forest-remove'):
         
@@ -212,7 +291,7 @@ async def on_message(message):
 
             embed.set_footer(text=f"Your newsletter is now composed of {len(filtered_keywords)} keywords")
                 
-            await message.channel.send(embed=embed)
+        await message.channel.send(embed=embed)
 
     if message.content == '--forest-disable':
         
@@ -326,6 +405,11 @@ async def on_message(message):
             inline=False)
 
         embed.add_field(
+            name="`--forest-search`",
+            value=f":white_small_square: Display quick search results of the {n_articles_results} latest articles",
+            inline=False)
+
+        embed.add_field(
             name="`--forest-help`",
             value=":white_small_square: Gives information about all commands", 
             inline=False)
@@ -341,5 +425,6 @@ async def on_ready():
     print(
         f'{client.user} is connected\n'
     )
-        
+
 client.run(TOKEN)
+cron_event.start()
