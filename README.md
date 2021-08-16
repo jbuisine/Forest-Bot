@@ -1,4 +1,4 @@
-# Forest-Bot
+# :evergreen_tree: Forest-Bot :evergreen_tree:
 
 ## Description
 
