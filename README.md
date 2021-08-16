@@ -23,5 +23,9 @@ pip install -r requirements.txt
 
 Just launch the bot:
 ```bash
-python waiter.py
+python forest.py
 ```
+
+# License
+
+[MIT](LICENSE)
