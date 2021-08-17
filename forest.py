@@ -45,10 +45,10 @@ async def cron_event(client):
 
     for channel_newsletter in newsletters:
         
+        channel = client.get_channel(channel_newsletter['channel_id'])  
+
         # only use newsletter if activated
         if channel_newsletter['activated']:
-
-            channel = client.get_channel(channel_newsletter['channel_id'])  
 
             config_time = datetime.datetime.strptime(channel_newsletter['time'], "%H:%M")
 
