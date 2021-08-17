@@ -25,7 +25,7 @@ client = discord.Client()
 connection = MongoClient()
 db = connection['forest-db']
 
-google_scholar_url = "https://scholar.google.fr/scholar?hl=fr&as_sdt=0,5&scisbd=1&q="
+google_scholar_url = "https://scholar.google.fr/scholar?hl=fr&as_sdt=0,5&scisbd=2&q="
 
 newsletter_collection = db['forest-newsletter']
 
@@ -56,9 +56,16 @@ async def cron_event(client):
             
                 # get current keywords from channel
                 current_keywords = channel_newsletter['keywords']
-                query = '+'.join(current_keywords).replace(' ', '+')
 
-                articles_list = get_gscholar_results(query)
+                keyword_query = ''
+                for k_id, keyword in enumerate(current_keywords):
+
+                    if k_id != 0:
+                        keyword_query += '+'
+
+                    keyword_query += '"' + keyword.replace(' ', '+') + '"'
+                    
+                articles_list = get_gscholar_results(keyword_query)
 
                 # check if article is already present in collections or not
                 reduced_articles = []
@@ -221,9 +228,16 @@ async def on_message(message):
         else:
             # get current keywords from channel
             current_keywords = channel_newsletter['keywords']
-            query = '+'.join(current_keywords).replace(' ', '+')
+            
+            keyword_query = ''
+            for k_id, keyword in enumerate(current_keywords):
 
-            articles_list = get_gscholar_results(query)
+                if k_id != 0:
+                    keyword_query += '+'
+
+                keyword_query += '"' + keyword.replace(' ', '+') + '"'
+                
+            articles_list = get_gscholar_results(keyword_query)
 
             message_data = ':evergreen_tree: :evergreen_tree: Quick search results :evergreen_tree: :evergreen_tree:\n\n'
             # display into message only new articles found
