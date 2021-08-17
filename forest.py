@@ -45,56 +45,61 @@ async def cron_event(client):
 
     for channel_newsletter in newsletters:
         
-        channel = client.get_channel(channel_newsletter['channel_id'])
+        # only use newsletter if activated
+        if channel_newsletter['activated']:
 
-        config_time = datetime.datetime.strptime(channel_newsletter['time'], "%H:%M")
+            channel = client.get_channel(channel_newsletter['channel_id'])  
 
-        if current_date.hour == config_time.hour and current_date.minute == config_time.minute:
-        
-            # get current keywords from channel
-            current_keywords = channel_newsletter['keywords']
-            query = '+'.join(current_keywords).replace(' ', '+')
+            config_time = datetime.datetime.strptime(channel_newsletter['time'], "%H:%M")
 
-            articles_list = get_gscholar_results(query)
+            if current_date.hour == config_time.hour and current_date.minute == config_time.minute:
+            
+                # get current keywords from channel
+                current_keywords = channel_newsletter['keywords']
+                query = '+'.join(current_keywords).replace(' ', '+')
 
-            # check if article is already present in collections or not
-            reduced_articles = []
-            for article in articles_list:
+                articles_list = get_gscholar_results(query)
 
-                machting_article = list(filter(lambda a: a['id'] == article['id'], channel_newsletter['articles']))
+                # check if article is already present in collections or not
+                reduced_articles = []
+                for article in articles_list:
 
-                if len(machting_article) == 0:
-                    reduced_articles.append(article)
+                    machting_article = list(filter(lambda a: a['id'] == article['id'], channel_newsletter['articles']))
 
-            # add unknown articles into collection
-            all_articles = list(channel_newsletter['articles'] + reduced_articles)
+                    if len(machting_article) == 0:
+                        reduced_articles.append(article)
 
-            newsletter_collection.update_one(
-                { '_id': channel_newsletter['_id'] }, 
-                { 
-                    '$set': { 'articles': all_articles } 
-                },
-                upsert=False
-            )
+                # add unknown articles into collection
+                all_articles = list(channel_newsletter['articles'] + reduced_articles)
 
-            message_data = ':evergreen_tree: :mailbox_with_mail: Newsletter search results :mailbox_with_mail: :evergreen_tree:\n\n'
-            # display into message only new articles found
-            for article in reduced_articles[:n_articles_results]:
-                message_data += f':newspaper: {article["title"]}\n'
-                message_data += f':link: <{article["href"]}>\n'
-                message_data += f':busts_in_silhouette: *{article["authors"]}*\n'
+                newsletter_collection.update_one(
+                    { '_id': channel_newsletter['_id'] }, 
+                    { 
+                        '$set': { 'articles': all_articles } 
+                    },
+                    upsert=False
+                )
 
-                if article["date"] is not None:
-                    message_data += f':calendar_spiral: {article["date"]}\n\n'
+                message_data = ':evergreen_tree: :mailbox_with_mail: Newsletter search results :mailbox_with_mail: :evergreen_tree:\n\n'
+                # display into message only new articles found
+                for article in reduced_articles[:n_articles_results]:
+                    message_data += f':newspaper: {article["title"]}\n'
+                    message_data += f':link: <{article["href"]}>\n'
+                    message_data += f':busts_in_silhouette: *{article["authors"]}*\n'
 
-            if len(articles_list) == 0:
-                message_data += ':man_shrugging: There is no new articles, it seems your up to date! :man_shrugging:'
+                    if article["date"] is not None:
+                        message_data += f':calendar_spiral: {article["date"]}\n\n'
 
-            print(f'{current_date} -- Forest send message to {channel.id}')
-            await channel.send(message_data)
-        
+                if len(articles_list) == 0:
+                    message_data += ':man_shrugging: There is no new articles, it seems your up to date! :man_shrugging:'
+
+                print(f'{current_date} -- Forest send message to {channel.id}')
+                await channel.send(message_data)
+            
+            else:
+                print(f'{current_date} -- No message sent from Forest to {channel.id}')
         else:
-            print(f'{current_date} -- No message sent from Forest to {channel.id}')
+            print(f'{current_date} -- No message sent from Forest to {channel.id} (newsletter is disabled)')
 
 def get_gscholar_results(query):
 
