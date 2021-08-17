@@ -25,7 +25,7 @@ client = discord.Client()
 connection = MongoClient()
 db = connection['forest-db']
 
-google_scholar_url = "https://scholar.google.fr/scholar?hl=fr&as_sdt=0,5&scisbd=2&q="
+google_scholar_url = "https://scholar.google.fr/scholar?hl=fr&as_sdt=0,5&scisbd=1&q="
 
 newsletter_collection = db['forest-newsletter']
 
