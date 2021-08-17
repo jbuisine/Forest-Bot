@@ -101,6 +101,7 @@ async def cron_event(client):
                     message_data += ':man_shrugging: There is no new articles, it seems your up to date! :man_shrugging:'
 
                 print(f'{current_date} -- Forest send message to {channel.id}')
+                print(f'\t\t -- Google Scholar search: {google_scholar_url + keyword_query}')
                 await channel.send(message_data)
             
             else:
@@ -238,6 +239,7 @@ async def on_message(message):
                 keyword_query += '"' + keyword.replace(' ', '+') + '"'
                 
             articles_list = get_gscholar_results(keyword_query)
+            print(f'{datetime.datetime.now()} -- {message.author.name} search {google_scholar_url + keyword_query}')
 
             message_data = ':evergreen_tree: :evergreen_tree: Quick search results :evergreen_tree: :evergreen_tree:\n\n'
             # display into message only new articles found
