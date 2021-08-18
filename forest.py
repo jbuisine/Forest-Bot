@@ -68,8 +68,9 @@ async def cron_event(client):
                 articles_list = get_gscholar_results(keyword_query)
 
                 # check if article is already present in collections or not
+                # depending of the number of wished articles
                 reduced_articles = []
-                for article in articles_list:
+                for article in articles_list[:n_articles_results]:
 
                     machting_article = list(filter(lambda a: a['id'] == article['id'], channel_newsletter['articles']))
 
