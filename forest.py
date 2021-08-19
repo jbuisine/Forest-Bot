@@ -98,12 +98,16 @@ async def cron_event(client):
                     if article["date"] is not None:
                         message_data += f':calendar_spiral: {article["date"]}\n\n'
 
-                if len(articles_list) == 0:
-                    message_data += ':man_shrugging: There is no new articles, it seems your up to date! :man_shrugging:'
+                # Remove this message
+                # if len(articles_list) == 0:
+                #     message_data += ':man_shrugging: There is no new articles, it seems your up to date! :man_shrugging:'
 
                 print(f'{current_date} -- Forest send message to {channel.id}')
                 print(f'\t\t -- Google Scholar search: {google_scholar_url + keyword_query}')
-                await channel.send(message_data)
+
+                # Send message only if new article has been found
+                if len(reduced_articles) > 0:
+                    await channel.send(message_data)
             
             else:
                 print(f'{current_date} -- No message sent from Forest to {channel.id}')
