@@ -26,6 +26,6 @@ Just launch the bot:
 python forest.py
 ```
 
-# License
+# Licence
 
-[MIT](LICENSE)
+[MIT](LICENCE)
