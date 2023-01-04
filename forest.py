@@ -48,7 +48,7 @@ async def cron_event(client):
         channel = client.get_channel(channel_newsletter['channel_id'])  
 
         # only use newsletter if activated
-        if channel_newsletter['activated']:
+        if channel is not None and channel_newsletter['activated']:
 
             config_time = datetime.datetime.strptime(channel_newsletter['time'], "%H:%M")
 
@@ -112,7 +112,7 @@ async def cron_event(client):
             else:
                 print(f'{current_date} -- No message sent from Forest to {channel.id}')
         else:
-            print(f'{current_date} -- No message sent from Forest to {channel.id} (newsletter is disabled)')
+            print(f'{current_date} -- No message sent from Forest to {channel_newsletter["channel_id"]} (newsletter is disabled)')
 
 def get_gscholar_results(query):
 
